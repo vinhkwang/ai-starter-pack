@@ -1,0 +1,6 @@
+.claude/settings.local.json
+CLAUDE.local.md
+AGENTS.local.md
+.env
+.env.*
+!.env.example

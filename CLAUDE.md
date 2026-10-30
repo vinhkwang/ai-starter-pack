@@ -1,0 +1,8 @@
+@AGENTS.md
+@docs/ai/rules/architecture.md
+@docs/ai/rules/code-style.md
+@docs/ai/rules/git-workflow.md
+@docs/ai/rules/testing.md
+@docs/ai/rules/security.md
+@docs/ai/rules/specs.md
+@docs/ai/rules/anti-patterns.md
