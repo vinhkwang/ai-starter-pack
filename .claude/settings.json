@@ -13,7 +13,11 @@
       "Bash(git push)",
       "Bash(<TEST_COMMAND>)",
       "Bash(<LINT_COMMAND>)",
-      "Bash(<TYPECHECK_COMMAND>)"
+      "Bash(<TYPECHECK_COMMAND>)",
+      "Bash(git push *)",
+      "Bash(jq *)",
+      "Bash(scripts/ai/validate-task-state.sh *)",
+      "Bash(scripts/ai/run-loop.sh *)"
     ],
     "deny": [
       "Read(./.env)",
