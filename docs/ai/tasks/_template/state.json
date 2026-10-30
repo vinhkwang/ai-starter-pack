@@ -1,0 +1,19 @@
+{
+  "task_id": "",
+  "status": "SPECIFYING",
+  "autonomy": "gate_after_spec",
+  "current_subtask": null,
+  "subtasks": [],
+  "counters": {
+    "total_iterations": 0,
+    "bug_spec_count": 0
+  },
+  "limits": {
+    "max_review_rounds": 3,
+    "max_test_rounds": 3,
+    "max_total_iterations": 20,
+    "max_bug_spec": 2
+  },
+  "last_verdict": null,
+  "blocked_reason": null
+}
