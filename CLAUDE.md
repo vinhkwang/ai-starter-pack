@@ -6,3 +6,4 @@
 @docs/ai/rules/security.md
 @docs/ai/rules/specs.md
 @docs/ai/rules/anti-patterns.md
+@docs/ai/workflow/loop-protocol.md

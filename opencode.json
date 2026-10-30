@@ -1,7 +1,8 @@
 {
   "$schema": "https://opencode.ai/config.json",
   "instructions": [
-    "docs/ai/rules/*.md"
+    "docs/ai/rules/*.md",
+    "docs/ai/workflow/loop-protocol.md"
   ],
   "permission": {
     "edit": "ask",

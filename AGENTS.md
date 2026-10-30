@@ -45,3 +45,7 @@ See docs/ai/rules/ for the full rules.
 ## When uncertain
 
 Ask one focused question. If you must proceed, state the assumption explicitly in the plan.
+
+## Agentic loop
+
+Use /run-task for any task larger than one atomic change. Approve with /resume-task <id> approve; without approve it shows the spec. While a task runs, docs/ai/workflow/loop-protocol.md overrides the manual workflow above. Only the orchestrator commits and pushes.
