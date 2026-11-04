@@ -40,7 +40,7 @@ while [[ $run -lt $max_runs ]]; do
       claude -p --permission-mode acceptEdits "/resume-task ${task_id}"
       ;;
     opencode)
-      opencode run --auto --command "resume-task ${task_id}"
+      opencode run --auto --agent orchestrator "Resume task ${task_id} per docs/ai/workflow/loop-protocol.md. Task folder: docs/ai/tasks/${task_id}/."
       ;;
     *)
       printf 'unknown tool: %s\n' "$tool" >&2

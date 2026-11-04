@@ -14,7 +14,7 @@ Project documentation and code identifiers are written in English. Commit messag
 - Typecheck: <TYPECHECK_COMMAND>
 - Dev: <DEV_COMMAND>
 
-Replace every placeholder above before the first implementation task.
+Replace every placeholder above before the first implementation task. Also replace the command and directory placeholders in `.opencode/agents/dev.md` and `.opencode/agents/tester.md`.
 
 ## Specs
 
