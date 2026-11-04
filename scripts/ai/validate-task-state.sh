@@ -18,7 +18,7 @@ if ! jq -e . "$state_file" >/dev/null 2>&1; then
   exit 1
 fi
 
-allowed_status='["SPECIFYING","AWAITING_APPROVAL","IMPLEMENTING","IN_REVIEW","IN_TEST","FINAL_TEST","DONE","BLOCKED"]'
+allowed_status='["SPECIFYING","DESIGNING","AWAITING_APPROVAL","IMPLEMENTING","IN_REVIEW","IN_TEST","FINAL_TEST","DONE","BLOCKED"]'
 
 if ! jq -e --argjson allowed "$allowed_status" '
   (.status | IN($allowed[]))

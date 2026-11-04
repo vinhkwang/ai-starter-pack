@@ -9,23 +9,24 @@ The orchestrator is the main thread (Claude Code) or a primary agent (opencode).
 | Role | Responsibility | Inputs | Outputs | Allowed verdicts |
 | --- | --- | --- | --- | --- |
 | orchestrator | Owns state.json, delegates to workers, applies transitions, runs post-condition check, commits and pushes | state.json, handoff files | state.json updates, commits, final message | none (applies worker verdicts) |
-| ba | Writes the spec and subtask list from the request | 00-request.md | 01-spec.md, 02-subtasks.md | SPEC_READY, SPEC_REVISED, NEEDS_CLARIFICATION, BLOCKED |
-| dev | Implements one subtask | 02-subtasks.md, 01-spec.md | 03-dev-log.md, source edits | IMPLEMENTED, BLOCKED |
+| ba | Writes the spec and draft subtask list from the request, resolves spec disputes | 00-request.md | 01-spec.md, 02-subtasks.md | SPEC_READY, SPEC_REVISED, NEEDS_CLARIFICATION, BLOCKED |
+| architect | Designs the technical solution, finalizes atomic subtasks, revises the design | 01-spec.md, 02-subtasks.md | 01b-design.md, 02-subtasks.md | DESIGN_READY, DESIGN_REVISED, SPEC_ISSUE, NEEDS_CLARIFICATION, BLOCKED |
+| dev | Implements one subtask | 02-subtasks.md, 01-spec.md, 01b-design.md | 03-dev-log.md, source edits | IMPLEMENTED, DESIGN_ISSUE, BLOCKED |
 | reviewer | Reviews one subtask read-only | 03-dev-log.md, source diff | 04-review.md | APPROVED, CHANGES_REQUESTED |
-| tester | Tests one subtask read-only | 01-spec.md, 04-review.md, source | 05-test-report.md, test files | PASS, BUG_CODE, BUG_SPEC |
+| tester | Designs test cases, tests one subtask or the whole task read-only | 01-spec.md, 01b-design.md, source | 05-test-cases.md, 05-test-report.md, test files | PASS, BUG_CODE, BUG_SPEC, BLOCKED |
 
 ### Permission matrix
 
-| Capability | orchestrator | ba | dev | reviewer | tester |
-| --- | --- | --- | --- | --- | --- |
-| Read source and task files | yes | yes | yes | yes | yes |
-| Edit docs/ai/tasks/ | yes | yes | no | no | no |
-| Edit source files | no | no | yes | no | no |
-| Edit test directories | no | no | yes | no | yes |
-| Run read-only git (status/diff/log/show) | yes | yes | yes | yes | yes |
-| Run tests and verification commands | yes | no | yes | no | yes |
-| git add / commit / push | yes | no | no | no | no |
-| Spawn subagents | yes | no | no | no | no |
+| Capability | orchestrator | ba | architect | dev | reviewer | tester |
+| --- | --- | --- | --- | --- | --- | --- |
+| Read source and task files | yes | yes | yes | yes | yes | yes |
+| Edit docs/ai/tasks/ | yes | yes (01-spec, 02-subtasks) | yes (01b-design, 02-subtasks) | yes (03-dev-log) | yes (04-review) | yes (05-test-cases, 05-test-report) |
+| Edit source files | no | no | no | yes | no | no |
+| Edit test directories | no | no | no | yes | no | yes |
+| Run read-only git (status/diff/log/show) | yes | yes | yes | yes | yes | yes |
+| Run tests and verification commands | yes | no | no | yes | no | yes |
+| git add / commit / push | yes | no | no | no | no | no |
+| Spawn subagents | yes | no | no | no | no | no |
 
 ## Task folder layout
 
@@ -36,9 +37,11 @@ The orchestrator is the main thread (Claude Code) or a primary agent (opencode).
 | 00-request.md | orchestrator | The user's original request |
 | state.json | orchestrator | Single source of truth; any new session resumes from it alone |
 | 01-spec.md | ba | Spec with acceptance criteria AC-1..AC-n |
-| 02-subtasks.md | ba | Ordered subtask list |
+| 01b-design.md | architect | Technical design and design log |
+| 02-subtasks.md | ba draft, architect final | Ordered subtask list |
 | 03-dev-log.md | dev | Per-subtask implementation log |
 | 04-review.md | reviewer | Per-round review findings |
+| 05-test-cases.md | tester | Test cases designed before execution |
 | 05-test-report.md | tester | Per-round test report |
 | history.log | orchestrator | One appended line per loop iteration |
 
@@ -57,7 +60,7 @@ state.json holds the following fields.
 | last_verdict | string or null | Last worker verdict applied |
 | blocked_reason | string or null | Set when status is BLOCKED |
 
-Allowed status values: `SPECIFYING`, `AWAITING_APPROVAL`, `IMPLEMENTING`, `IN_REVIEW`, `IN_TEST`, `FINAL_TEST`, `DONE`, `BLOCKED`.
+Allowed status values: `SPECIFYING`, `DESIGNING`, `AWAITING_APPROVAL`, `IMPLEMENTING`, `IN_REVIEW`, `IN_TEST`, `FINAL_TEST`, `DONE`, `BLOCKED`.
 
 Subtask status values: `pending`, `in_progress`, `done`, `blocked`.
 
@@ -65,39 +68,56 @@ Subtask status values: `pending`, `in_progress`, `done`, `blocked`.
 
 | Role | Verdict | Meaning |
 | --- | --- | --- |
-| ba | SPEC_READY | Spec and subtasks are complete and consistent |
+| ba | SPEC_READY | Spec and draft subtasks are complete and consistent |
 | ba | SPEC_REVISED | Spec changed, acceptance criteria unchanged |
 | ba | NEEDS_CLARIFICATION | Spec is missing or ambiguous input |
 | ba | BLOCKED | Cannot proceed |
+| architect | DESIGN_READY | Design and subtask list are complete and consistent |
+| architect | DESIGN_REVISED | Design changed, acceptance criteria unchanged |
+| architect | SPEC_ISSUE | The spec cannot be implemented as written |
+| architect | NEEDS_CLARIFICATION | Design needs input only the user can give |
+| architect | BLOCKED | Cannot proceed |
 | dev | IMPLEMENTED | Subtask implemented, dev log written |
+| dev | DESIGN_ISSUE | The design cannot be implemented as written |
 | dev | BLOCKED | Cannot implement |
 | reviewer | APPROVED | No blocking findings |
 | reviewer | CHANGES_REQUESTED | At least one blocking finding |
 | tester | PASS | All criteria for the subtask verified |
 | tester | BUG_CODE | Spec is clear and the implementation deviates |
 | tester | BUG_SPEC | Expected behavior is missing, ambiguous, or contradictory |
+| tester | BLOCKED | Environment prevents verification |
 
 ## Transition table
 
 | From | Event / verdict | To | Side effect |
 | --- | --- | --- | --- |
-| SPECIFYING | ba SPEC_READY and autonomy is full | IMPLEMENTING | first pending subtask becomes current |
-| SPECIFYING | ba SPEC_READY and autonomy is gate_after_spec | AWAITING_APPROVAL | wait for human approve |
-| SPECIFYING | ba SPEC_REVISED | SPECIFYING | re-run ba |
-| SPECIFYING | ba NEEDS_CLARIFICATION or BLOCKED | BLOCKED | set blocked_reason |
+| SPECIFYING | ba SPEC_READY | DESIGNING | architect runs in design mode |
+| SPECIFYING | ba SPEC_REVISED | DESIGNING | architect runs in revise mode with reason spec-change |
+| SPECIFYING | ba NEEDS_CLARIFICATION | SPECIFYING | set last_verdict, print questions, stop |
+| SPECIFYING | ba BLOCKED | BLOCKED | set blocked_reason |
+| DESIGNING | architect DESIGN_READY | AWAITING_APPROVAL or IMPLEMENTING | sync subtasks; gate, or IMPLEMENTING when autonomy is full |
+| DESIGNING | architect DESIGN_REVISED | AWAITING_APPROVAL or IMPLEMENTING | sync subtasks; gate when approved decisions or criteria changed |
+| DESIGNING | architect SPEC_ISSUE | SPECIFYING | bug_spec_count incremented; ba runs in revise mode |
+| DESIGNING | architect NEEDS_CLARIFICATION | DESIGNING | set last_verdict, print questions, stop |
+| DESIGNING | architect BLOCKED | BLOCKED | set blocked_reason |
 | AWAITING_APPROVAL | human approve | IMPLEMENTING | first pending subtask becomes current |
 | IMPLEMENTING | dev IMPLEMENTED | IN_REVIEW | reviewer runs |
+| IMPLEMENTING | dev DESIGN_ISSUE | DESIGNING | bug_spec_count incremented; architect runs in revise mode with reason design-issue |
 | IMPLEMENTING | dev BLOCKED | BLOCKED | set blocked_reason |
 | IN_REVIEW | reviewer APPROVED | IN_TEST | tester runs |
 | IN_REVIEW | reviewer CHANGES_REQUESTED | IMPLEMENTING | review_rounds incremented |
 | IN_TEST | tester PASS | next subtask or FINAL_TEST | commit and push the subtask first |
 | IN_TEST | tester BUG_CODE | IMPLEMENTING | test_rounds incremented |
 | IN_TEST | tester BUG_SPEC | SPECIFYING | bug_spec_count incremented |
+| IN_TEST | tester BLOCKED | BLOCKED | set blocked_reason |
 | FINAL_TEST | tester PASS | DONE | final commit and push |
 | FINAL_TEST | tester BUG_CODE | IMPLEMENTING | create a `final-fix` subtask |
+| FINAL_TEST | tester BUG_SPEC | SPECIFYING | bug_spec_count incremented |
 | any | any worker BLOCKED | BLOCKED | set blocked_reason |
 
 On IN_TEST PASS: commit and push the current subtask with its `commit_message`, mark the subtask done, then move to the next pending subtask or to FINAL_TEST when none remain.
+
+On FINAL_TEST PASS: commit and push the remaining task and test artifacts, then move to DONE.
 
 ## Orchestrator procedure
 
@@ -106,11 +126,11 @@ On IN_TEST PASS: commit and push the current subtask with its `commit_message`, 
 3. Increment `counters.total_iterations`; stop and set BLOCKED if it exceeds `max_total_iterations`.
 4. Append one line to history.log.
 5. Delegate to the worker for the current status with file paths and ids only, never pasted content.
-6. Run the post-condition check after ba, reviewer, and tester return.
+6. Run the post-condition check after ba, architect, reviewer, and tester return.
 7. Apply the transition from the worker's verdict.
 8. Persist state.json before the next delegation.
 
-The post-condition check: `git status` must show changes only under `docs/ai/tasks/` after ba and reviewer return, and only under `docs/ai/tasks/` plus test directories after tester returns. Otherwise revert the unexpected files and set status BLOCKED with a blocked_reason.
+The post-condition check: `git status` must show changes only under `docs/ai/tasks/` after ba, architect, and reviewer return, and only under `docs/ai/tasks/` plus test directories after tester returns. Otherwise revert the unexpected files and set status BLOCKED with a blocked_reason.
 
 ## Limits and escalation
 
