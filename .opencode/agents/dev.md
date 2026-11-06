@@ -42,9 +42,9 @@ Task folder path, subtask id, round number, and optionally a rework report path 
 
 ## Procedure
 1. Read the subtask in `02-subtasks.md`, the criteria it covers in `01-spec.md`, `01b-design.md` when present, and the rules.
-2. Round 1: implement the subtask. Later rounds: read the report and address every blocking finding or failing criterion by id. Do not expand scope.
+2. Round 1: implement the subtask so its pre-written tests pass. Later rounds: read the report and address every blocking finding or failing criterion by id. Do not expand scope.
 3. Follow the architecture rules strictly: Controller to Service to Repository, DTOs at layer boundaries, constructor injection, Strategy instead of type conditionals.
-4. Write tests as required by `docs/ai/rules/testing.md`.
+4. Follow strict TDD. The AI-Native TDD tester writes the comprehensive unit tests, before any source code. You write only the minimum source code to make those tests pass. Never write source without a pre-existing failing test covering it, and never author the unit tests yourself.
 5. Write no comments in code. Express intent through names.
 6. Run the subtask verification command, then lint and typecheck. Fix failures before finishing.
 7. Append an entry to `03-dev-log.md`: subtask id, round, files changed, how each finding or failing criterion was resolved, verification output summary.

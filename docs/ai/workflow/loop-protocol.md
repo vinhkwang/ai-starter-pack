@@ -13,7 +13,7 @@ The orchestrator is the main thread (Claude Code) or a primary agent (opencode).
 | architect | Designs the technical solution, finalizes atomic subtasks, revises the design | 01-spec.md, 02-subtasks.md | 01b-design.md, 02-subtasks.md | DESIGN_READY, DESIGN_REVISED, SPEC_ISSUE, NEEDS_CLARIFICATION, BLOCKED |
 | dev | Implements one subtask | 02-subtasks.md, 01-spec.md, 01b-design.md | 03-dev-log.md, source edits | IMPLEMENTED, DESIGN_ISSUE, BLOCKED |
 | reviewer | Reviews one subtask read-only | 03-dev-log.md, source diff | 04-review.md | APPROVED, CHANGES_REQUESTED |
-| tester | Designs test cases, tests one subtask or the whole task read-only | 01-spec.md, 01b-design.md, source | 05-test-cases.md, 05-test-report.md, test files | PASS, BUG_CODE, BUG_SPEC, BLOCKED |
+| tester | AI-Native TDD tester: writes unit tests and test cases before source (red), then tests after review including Playwright e2e (green) | 01-spec.md, 01b-design.md, source | 05-test-cases.md, 05-test-report.md, test files | TESTS_READY, PASS, BUG_CODE, BUG_SPEC, BLOCKED |
 
 ### Permission matrix
 
@@ -60,7 +60,7 @@ state.json holds the following fields.
 | last_verdict | string or null | Last worker verdict applied |
 | blocked_reason | string or null | Set when status is BLOCKED |
 
-Allowed status values: `SPECIFYING`, `DESIGNING`, `AWAITING_APPROVAL`, `IMPLEMENTING`, `IN_REVIEW`, `IN_TEST`, `FINAL_TEST`, `DONE`, `BLOCKED`.
+Allowed status values: `SPECIFYING`, `DESIGNING`, `AWAITING_APPROVAL`, `WRITING_TESTS`, `IMPLEMENTING`, `IN_REVIEW`, `IN_TEST`, `FINAL_TEST`, `DONE`, `BLOCKED`.
 
 Subtask status values: `pending`, `in_progress`, `done`, `blocked`.
 
@@ -82,6 +82,7 @@ Subtask status values: `pending`, `in_progress`, `done`, `blocked`.
 | dev | BLOCKED | Cannot implement |
 | reviewer | APPROVED | No blocking findings |
 | reviewer | CHANGES_REQUESTED | At least one blocking finding |
+| tester | TESTS_READY | Unit tests and test cases for the subtask's criteria are written and cover each requirement |
 | tester | PASS | All criteria for the subtask verified |
 | tester | BUG_CODE | Spec is clear and the implementation deviates |
 | tester | BUG_SPEC | Expected behavior is missing, ambiguous, or contradictory |
@@ -95,29 +96,36 @@ Subtask status values: `pending`, `in_progress`, `done`, `blocked`.
 | SPECIFYING | ba SPEC_REVISED | DESIGNING | architect runs in revise mode with reason spec-change |
 | SPECIFYING | ba NEEDS_CLARIFICATION | SPECIFYING | set last_verdict, print questions, stop |
 | SPECIFYING | ba BLOCKED | BLOCKED | set blocked_reason |
-| DESIGNING | architect DESIGN_READY | AWAITING_APPROVAL or IMPLEMENTING | sync subtasks; gate, or IMPLEMENTING when autonomy is full |
-| DESIGNING | architect DESIGN_REVISED | AWAITING_APPROVAL or IMPLEMENTING | sync subtasks; gate when approved decisions or criteria changed |
+| DESIGNING | architect DESIGN_READY | AWAITING_APPROVAL or WRITING_TESTS | sync subtasks; gate, or WRITING_TESTS when autonomy is full |
+| DESIGNING | architect DESIGN_REVISED | AWAITING_APPROVAL or WRITING_TESTS | sync subtasks; gate when approved decisions or criteria changed |
 | DESIGNING | architect SPEC_ISSUE | SPECIFYING | bug_spec_count incremented; ba runs in revise mode |
 | DESIGNING | architect NEEDS_CLARIFICATION | DESIGNING | set last_verdict, print questions, stop |
 | DESIGNING | architect BLOCKED | BLOCKED | set blocked_reason |
-| AWAITING_APPROVAL | human approve | IMPLEMENTING | first pending subtask becomes current |
+| AWAITING_APPROVAL | human approve | WRITING_TESTS | first pending subtask becomes current; tester writes its tests |
+| WRITING_TESTS | tester TESTS_READY | IMPLEMENTING | dev implements the current subtask against the tests |
+| WRITING_TESTS | tester BUG_SPEC | SPECIFYING | bug_spec_count incremented; ba runs in revise mode |
+| WRITING_TESTS | tester BLOCKED | BLOCKED | set blocked_reason |
 | IMPLEMENTING | dev IMPLEMENTED | IN_REVIEW | reviewer runs |
 | IMPLEMENTING | dev DESIGN_ISSUE | DESIGNING | bug_spec_count incremented; architect runs in revise mode with reason design-issue |
 | IMPLEMENTING | dev BLOCKED | BLOCKED | set blocked_reason |
 | IN_REVIEW | reviewer APPROVED | IN_TEST | tester runs |
 | IN_REVIEW | reviewer CHANGES_REQUESTED | IMPLEMENTING | review_rounds incremented |
-| IN_TEST | tester PASS | next subtask or FINAL_TEST | commit and push the subtask first |
+| IN_TEST | tester PASS | WRITING_TESTS or FINAL_TEST | commit and push the subtask first; next subtask starts with tests |
 | IN_TEST | tester BUG_CODE | IMPLEMENTING | test_rounds incremented |
 | IN_TEST | tester BUG_SPEC | SPECIFYING | bug_spec_count incremented |
 | IN_TEST | tester BLOCKED | BLOCKED | set blocked_reason |
 | FINAL_TEST | tester PASS | DONE | final commit and push |
-| FINAL_TEST | tester BUG_CODE | IMPLEMENTING | create a `final-fix` subtask |
+| FINAL_TEST | tester BUG_CODE | WRITING_TESTS | create a `final-fix` subtask; tester writes its regression test first |
 | FINAL_TEST | tester BUG_SPEC | SPECIFYING | bug_spec_count incremented |
 | any | any worker BLOCKED | BLOCKED | set blocked_reason |
 
-On IN_TEST PASS: commit and push the current subtask with its `commit_message`, mark the subtask done, then move to the next pending subtask or to FINAL_TEST when none remain.
+On IN_TEST PASS: commit and push the current subtask with its `commit_message`, mark the subtask done, then set WRITING_TESTS for the next pending subtask (its tests are written first) or FINAL_TEST when none remain.
 
 On FINAL_TEST PASS: commit and push the remaining task and test artifacts, then move to DONE.
+
+## Test-first ordering
+
+Every subtask enters `WRITING_TESTS` before `IMPLEMENTING`. The tester writes the failing unit tests for the subtask's criteria first (red); the dev implements the minimum source to pass them (green); the reviewer reviews; the tester runs the full suite in `IN_TEST`. Rework that does not change behavior (`IN_REVIEW` CHANGES_REQUESTED, `IN_TEST` BUG_CODE) returns straight to `IMPLEMENTING` because the tests already exist.
 
 ## Orchestrator procedure
 

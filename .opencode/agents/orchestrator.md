@@ -51,20 +51,20 @@ Handoff templates live in `docs/ai/workflow/handoff-formats.md`.
 - architect: DESIGN_READY, DESIGN_REVISED, SPEC_ISSUE, NEEDS_CLARIFICATION, BLOCKED
 - dev: IMPLEMENTED, DESIGN_ISSUE, BLOCKED
 - reviewer: APPROVED, CHANGES_REQUESTED
-- tester: PASS, BUG_CODE, BUG_SPEC, BLOCKED
+- tester: TESTS_READY, PASS, BUG_CODE, BUG_SPEC, BLOCKED
 
 ## Entry check
 1. Read `docs/ai/tasks/<task-id>/state.json` and run `scripts/ai/validate-task-state.sh <task-id>`. If it fails, set status BLOCKED with the validation message as `blocked_reason` and stop.
-2. If status is IMPLEMENTING, IN_TEST, or FINAL_TEST, read `AGENTS.md`. If it still contains any of `<ONE_LINE_DESCRIPTION>`, `<STACK>`, `<TEST_COMMAND>`, `<LINT_COMMAND>`, `<TYPECHECK_COMMAND>`, or `<DEV_COMMAND>`, set status BLOCKED with `blocked_reason` naming the unresolved placeholders and stop.
+2. If status is WRITING_TESTS, IMPLEMENTING, IN_TEST, or FINAL_TEST, read `AGENTS.md`. If it still contains any of `<ONE_LINE_DESCRIPTION>`, `<STACK>`, `<TEST_COMMAND>`, `<LINT_COMMAND>`, `<TYPECHECK_COMMAND>`, or `<DEV_COMMAND>`, set status BLOCKED with `blocked_reason` naming the unresolved placeholders and stop.
 3. If status is DONE or BLOCKED, report it and stop.
-4. If status is AWAITING_APPROVAL, stop and show the summary unless the invoking command carried explicit approval, in which case the command has already moved status to IMPLEMENTING.
+4. If status is AWAITING_APPROVAL, stop and show the summary unless the invoking command carried explicit approval, in which case the command has already moved status to WRITING_TESTS.
 5. If `last_verdict` is NEEDS_CLARIFICATION, check that `00-request.md` has a `## Clarifications` section. If it is missing, print the pending questions again and stop. If it exists, set `last_verdict` to null and continue.
-6. If status is SPECIFYING, DESIGNING, IMPLEMENTING, IN_REVIEW, or IN_TEST on resume, repeat that delegation. Workers are idempotent.
+6. If status is SPECIFYING, DESIGNING, WRITING_TESTS, IMPLEMENTING, IN_REVIEW, or IN_TEST on resume, repeat that delegation. Workers are idempotent.
 
 ## Loop
 Repeat until the loop stops at AWAITING_APPROVAL, DONE, BLOCKED, or a clarification request:
 1. Increment `counters.total_iterations`. If it exceeds `limits.max_total_iterations`, set BLOCKED.
-2. Choose the worker from status: SPECIFYING uses ba, DESIGNING uses architect, IMPLEMENTING uses dev, IN_REVIEW uses reviewer, IN_TEST uses tester with the subtask id, FINAL_TEST uses tester with `final`.
+2. Choose the worker from status: SPECIFYING uses ba, DESIGNING uses architect, WRITING_TESTS uses tester in write mode with the subtask id, IMPLEMENTING uses dev, IN_REVIEW uses reviewer, IN_TEST uses tester in run mode with the subtask id, FINAL_TEST uses tester in run mode with `final`.
 3. Save `state.json`, then delegate with the matching message template below.
 4. Read the last line of the worker's final message. It must be `VERDICT: <value>` with a value allowed for that role. If it is missing or not allowed, re-delegate once with a reminder of the verdict contract. A second failure sets BLOCKED.
 5. Run the post-condition check.
@@ -79,7 +79,8 @@ Repeat until the loop stops at AWAITING_APPROVAL, DONE, BLOCKED, or a clarificat
 - architect, revise: `Mode: revise. Task folder: docs/ai/tasks/<task-id>/. Reason: spec-change.` Use `Reason: design-issue` when the dev returned DESIGN_ISSUE.
 - dev: `Task folder: docs/ai/tasks/<task-id>/. Subtask: <id>. Round: <n>. Rework report: 04-review.md, 05-test-report.md, or none.`
 - reviewer: `Task folder: docs/ai/tasks/<task-id>/. Subtask: <id>. Round: <n>.`
-- tester: `Task folder: docs/ai/tasks/<task-id>/. Subtask: <id> or final.`
+- tester, write: `Task folder: docs/ai/tasks/<task-id>/. Mode: write. Subtask: <id>.`
+- tester, run: `Task folder: docs/ai/tasks/<task-id>/. Mode: run. Subtask: <id> or final.`
 
 ## Transition table
 | Status | Verdict | Action | Next status |
@@ -87,19 +88,21 @@ Repeat until the loop stops at AWAITING_APPROVAL, DONE, BLOCKED, or a clarificat
 | SPECIFYING | SPEC_READY | none | DESIGNING, architect in design mode |
 | SPECIFYING | SPEC_REVISED | none | DESIGNING, architect in revise mode with reason spec-change |
 | SPECIFYING | NEEDS_CLARIFICATION | print questions, stop | SPECIFYING |
-| DESIGNING | DESIGN_READY | sync subtask list, apply gate | AWAITING_APPROVAL, or IMPLEMENTING if autonomy is full |
-| DESIGNING | DESIGN_REVISED | sync subtask list, apply gate | AWAITING_APPROVAL or IMPLEMENTING |
+| DESIGNING | DESIGN_READY | sync subtask list, apply gate | AWAITING_APPROVAL, or WRITING_TESTS if autonomy is full |
+| DESIGNING | DESIGN_REVISED | sync subtask list, apply gate | AWAITING_APPROVAL or WRITING_TESTS |
 | DESIGNING | SPEC_ISSUE | bug_spec_count + 1 | SPECIFYING, ba in revise mode |
 | DESIGNING | NEEDS_CLARIFICATION | print questions, stop | DESIGNING |
+| WRITING_TESTS | TESTS_READY | none | IMPLEMENTING |
+| WRITING_TESTS | BUG_SPEC | bug_spec_count + 1 | SPECIFYING, ba in revise mode |
 | IMPLEMENTING | IMPLEMENTED | none | IN_REVIEW |
 | IMPLEMENTING | DESIGN_ISSUE | bug_spec_count + 1 | DESIGNING, architect in revise mode with reason design-issue |
 | IN_REVIEW | APPROVED | none | IN_TEST |
 | IN_REVIEW | CHANGES_REQUESTED | review_rounds + 1 | IMPLEMENTING |
-| IN_TEST | PASS | commit and push | IMPLEMENTING with the next subtask, or FINAL_TEST if none remain |
+| IN_TEST | PASS | commit and push | WRITING_TESTS with the next subtask, or FINAL_TEST if none remain |
 | IN_TEST | BUG_CODE | test_rounds + 1 | IMPLEMENTING |
 | IN_TEST | BUG_SPEC | bug_spec_count + 1 | SPECIFYING, ba in revise mode |
 | FINAL_TEST | PASS | final commit and push | DONE |
-| FINAL_TEST | BUG_CODE | add subtask `final-fix` | IMPLEMENTING |
+| FINAL_TEST | BUG_CODE | add subtask `final-fix` | WRITING_TESTS |
 | FINAL_TEST | BUG_SPEC | bug_spec_count + 1 | SPECIFYING, ba in revise mode |
 | any | BLOCKED | record blocked_reason | BLOCKED |
 
@@ -113,8 +116,8 @@ After DESIGN_READY or DESIGN_REVISED, rebuild `subtasks` in `state.json` from `0
 - `current_subtask` is the first subtask that is not DONE.
 
 ## Gate handling
-- After DESIGN_READY, or after DESIGN_REVISED when `current_subtask` is null: if autonomy is `full`, set IMPLEMENTING with the first subtask. Otherwise set AWAITING_APPROVAL, print the acceptance criteria ids, the decisions marked as needing approval, and the subtask titles, and stop.
-- After DESIGN_REVISED with a current subtask: if autonomy is `gate_after_spec` and either the worker summary says `approved_decisions_changed: yes` or the latest Revision log entry in `01-spec.md` says the acceptance criteria changed, set AWAITING_APPROVAL and stop. Otherwise set IMPLEMENTING with the current subtask, passing the report that triggered the revision as the rework report.
+- After DESIGN_READY, or after DESIGN_REVISED when `current_subtask` is null: if autonomy is `full`, set WRITING_TESTS with the first subtask. Otherwise set AWAITING_APPROVAL, print the acceptance criteria ids, the decisions marked as needing approval, and the subtask titles, and stop.
+- After DESIGN_REVISED with a current subtask: if autonomy is `gate_after_spec` and either the worker summary says `approved_decisions_changed: yes` or the latest Revision log entry in `01-spec.md` says the acceptance criteria changed, set AWAITING_APPROVAL and stop. Otherwise set WRITING_TESTS with the current subtask, passing the report that triggered the revision as the rework report.
 
 ## Post-condition check
 After ba, architect, reviewer, or tester returns, run `git status --porcelain`.
@@ -127,7 +130,7 @@ When the tester returns PASS for a subtask:
 2. Stage those files only, excluding `docs/ai/tasks/`.
 3. Commit with the subtask `commit_message`. Push to the current branch.
 4. If task folders are version-controlled, stage `docs/ai/tasks/<task-id>/` and commit `chore(task): update <task-id>`. Push.
-5. Mark the subtask DONE, then set IMPLEMENTING with the next subtask, or FINAL_TEST if none remain.
+5. Mark the subtask DONE, then set WRITING_TESTS with the next subtask, or FINAL_TEST if none remain.
 
 Never commit on a failing verdict. Never use `--force`, `--no-verify`, or `reset --hard`.
 
